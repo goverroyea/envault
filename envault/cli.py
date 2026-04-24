@@ -1,82 +1,90 @@
-"""CLI entry point for envault using Click."""
+"""CLI entry point for envault."""
 
-import os
-import subprocess
+from __future__ import annotations
+
 import sys
 
 import click
 
-from envault.vault import inject_vault, load_vault, save_vault
-
-DEFAULT_VAULT_PATH = ".envault"
+from envault.config import resolve_vault_path, resolve_passphrase
+from envault.vault import load_vault, save_vault, inject_vault
+from envault.cli_export import export_vars
 
 
 @click.group()
-@click.version_option()
-def cli():
+def cli() -> None:
     """envault — securely manage and inject environment variables."""
 
 
 @cli.command("set")
 @click.argument("key")
 @click.argument("value")
-@click.option("--vault", "vault_path", default=DEFAULT_VAULT_PATH, show_default=True, help="Path to vault file.")
-@click.password_option("--passphrase", envvar="ENVAULT_PASSPHRASE", prompt="Passphrase", help="Vault passphrase.")
-def set_var(key, value, vault_path, passphrase):
-    """Set a variable KEY=VALUE in the vault."""
+@click.option("--vault", "vault_path", default=None)
+@click.option("--passphrase", default=None)
+def set_var(key: str, value: str, vault_path: str | None, passphrase: str | None) -> None:
+    """Set a variable in the vault."""
+    path = resolve_vault_path(vault_path)
+    secret = resolve_passphrase(passphrase)
     try:
-        variables = load_vault(vault_path, passphrase) if os.path.exists(vault_path) else {}
-    except Exception as exc:
-        raise click.ClickException(f"Failed to load vault: {exc}") from exc
-
+        variables = load_vault(path, secret)
+    except FileNotFoundError:
+        variables = {}
+    except Exception as exc:  # noqa: BLE001
+        click.echo(f"Error loading vault: {exc}", err=True)
+        sys.exit(1)
     variables[key] = value
-    save_vault(vault_path, variables, passphrase)
-    click.echo(f"✔ Set {key} in vault '{vault_path}'.")
+    save_vault(path, secret, variables)
+    click.echo(f"Set {key} in {path}")
 
 
 @cli.command("get")
 @click.argument("key")
-@click.option("--vault", "vault_path", default=DEFAULT_VAULT_PATH, show_default=True, help="Path to vault file.")
-@click.option("--passphrase", envvar="ENVAULT_PASSPHRASE", prompt="Passphrase", hide_input=True, help="Vault passphrase.")
-def get_var(key, vault_path, passphrase):
-    """Get the value of KEY from the vault."""
+@click.option("--vault", "vault_path", default=None)
+@click.option("--passphrase", default=None)
+def get_var(key: str, vault_path: str | None, passphrase: str | None) -> None:
+    """Get a variable from the vault."""
+    path = resolve_vault_path(vault_path)
+    secret = resolve_passphrase(passphrase)
     try:
-        variables = load_vault(vault_path, passphrase)
-    except Exception as exc:
-        raise click.ClickException(f"Failed to load vault: {exc}") from exc
-
+        variables = load_vault(path, secret)
+    except Exception as exc:  # noqa: BLE001
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
     if key not in variables:
-        raise click.ClickException(f"Key '{key}' not found in vault.")
+        click.echo(f"Key '{key}' not found.", err=True)
+        sys.exit(1)
     click.echo(variables[key])
 
 
 @cli.command("list")
-@click.option("--vault", "vault_path", default=DEFAULT_VAULT_PATH, show_default=True, help="Path to vault file.")
-@click.option("--passphrase", envvar="ENVAULT_PASSPHRASE", prompt="Passphrase", hide_input=True, help="Vault passphrase.")
-def list_vars(vault_path, passphrase):
-    """List all variable keys stored in the vault."""
+@click.option("--vault", "vault_path", default=None)
+@click.option("--passphrase", default=None)
+def list_vars(vault_path: str | None, passphrase: str | None) -> None:
+    """List all variable keys in the vault."""
+    path = resolve_vault_path(vault_path)
+    secret = resolve_passphrase(passphrase)
     try:
-        variables = load_vault(vault_path, passphrase)
-    except Exception as exc:
-        raise click.ClickException(f"Failed to load vault: {exc}") from exc
-
-    if not variables:
-        click.echo("Vault is empty.")
-        return
+        variables = load_vault(path, secret)
+    except Exception as exc:  # noqa: BLE001
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
     for key in sorted(variables):
         click.echo(key)
 
 
 @cli.command("run")
 @click.argument("command", nargs=-1, required=True)
-@click.option("--vault", "vault_path", default=DEFAULT_VAULT_PATH, show_default=True, help="Path to vault file.")
-@click.option("--passphrase", envvar="ENVAULT_PASSPHRASE", prompt="Passphrase", hide_input=True, help="Vault passphrase.")
-def run_command(command, vault_path, passphrase):
-    """Run COMMAND with vault variables injected into the environment."""
+@click.option("--vault", "vault_path", default=None)
+@click.option("--passphrase", default=None)
+def run_command(command: tuple[str, ...], vault_path: str | None, passphrase: str | None) -> None:
+    """Run a command with vault variables injected into the environment."""
+    path = resolve_vault_path(vault_path)
+    secret = resolve_passphrase(passphrase)
     try:
-        env = inject_vault(vault_path, passphrase)
-    except Exception as exc:
-        raise click.ClickException(f"Failed to load vault: {exc}") from exc
+        inject_vault(path, secret, list(command))
+    except Exception as exc:  # noqa: BLE001
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(1)
 
-    result = subprocess.run(list(command), env=env)
-    sys.exit(result.returncode)
+
+cli.add_command(export_vars)
