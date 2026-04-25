@@ -61,6 +61,15 @@ def test_inject_vault_sets_env_vars(vault_file):
     assert injected == SAMPLE_VARS
 
 
+def test_inject_vault_does_not_leak_extra_vars(vault_file):
+    """Ensure inject_vault only sets the variables stored in the vault."""
+    before = set(os.environ.keys())
+    inject_vault(vault_file, PASSPHRASE)
+    after = set(os.environ.keys())
+    newly_set = after - before
+    assert newly_set <= set(SAMPLE_VARS.keys())
+
+
 def test_save_and_load_empty_vault(tmp_path):
     path = str(tmp_path / ".envault")
     save_vault(path, PASSPHRASE, {})
