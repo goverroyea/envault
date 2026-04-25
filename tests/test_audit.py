@@ -60,6 +60,17 @@ def test_read_events_returns_all_events(vault_path):
     assert len(events) == 3
 
 
+def test_read_events_preserves_order(vault_path):
+    """Events should be returned in the order they were recorded."""
+    record_event(vault_path, "set", key="FIRST")
+    record_event(vault_path, "set", key="SECOND")
+    record_event(vault_path, "set", key="THIRD")
+    events = read_events(vault_path)
+    assert events[0]["key"] == "FIRST"
+    assert events[1]["key"] == "SECOND"
+    assert events[2]["key"] == "THIRD"
+
+
 def test_clear_events_removes_log(vault_path):
     record_event(vault_path, "set", key="X")
     clear_events(vault_path)
