@@ -30,7 +30,10 @@ def load_vault(path: str, passphrase: str) -> Dict[str, str]:
         ciphertext = f.read().strip()
 
     plaintext = decrypt(ciphertext, passphrase)
-    return json.loads(plaintext)
+    try:
+        return json.loads(plaintext)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Vault file contains invalid JSON after decryption: {e}") from e
 
 
 def save_vault(path: str, passphrase: str, variables: Dict[str, str]) -> None:
